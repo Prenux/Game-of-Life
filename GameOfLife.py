@@ -20,38 +20,41 @@ class GameManager:
     # Make game run itself or step-by-step
     def play(self, update_time,step, frames, shitty):
         times = 0
-        while True:
-            # check if there is a defined number of frames and if we have reached it
-            if times is frames:
-                sys.exit()             
-            output = []
-            times += 1
-            # Build array with symbol ready to print
-            for line in self.grid.grid_arr:
-                for cell in line:
-                    if cell.is_alive and self.with_color:
-                        output.append(cell.content.symbol + " ")
-                    elif cell.is_alive :
-                        output.append(cell.content.race + " ")
-                    else:
-                        output.append(". ")
-                output.append("\n")
-            # check if windows since windows doesn't support 
-            # escape sequence correctly
-            if self.is_windows or shitty:
-                print("".join(output))
-            else:
-                self.out("".join(output))
-            # if step mode, wait for input (such as enter)
-            if step:
-                input()
-                # move to cursor at the beginning of stdout
-                # making it updating screen instead of print 100 newlines
-                sys.stdout.write(('\b\r'))
-                sys.stdout.flush()
-            else:
-                time.sleep(update_time)
-            self.grid.comp_next_grid()
+        try:
+            while True:
+                # check if there is a defined number of frames and if we have reached it
+                if times is frames:
+                    sys.exit()             
+                output = []
+                times += 1
+                # Build array with symbol ready to print
+                for line in self.grid.grid_arr:
+                    for cell in line:
+                        if cell.is_alive and self.with_color:
+                            output.append(cell.content.symbol + " ")
+                        elif cell.is_alive :
+                            output.append(cell.content.race + " ")
+                        else:
+                            output.append(". ")
+                    output.append("\n")
+                # check if windows since windows doesn't support 
+                # escape sequence correctly
+                if self.is_windows or shitty:
+                    print("".join(output))
+                else:
+                    self.out("".join(output))
+                # if step mode, wait for input (such as enter)
+                if step:
+                    input()
+                    # move to cursor at the beginning of stdout
+                    # making it updating screen instead of print 100 newlines
+                    sys.stdout.write(('\b\r'))
+                    sys.stdout.flush()
+                else:
+                    time.sleep(update_time)
+                self.grid.comp_next_grid()
+        except KeyboardInterrupt:
+                print("\nGoodbye!")
     
     # Fetch rules from rules file
     def get_rules(self, rules_file):
@@ -85,9 +88,11 @@ class GameManager:
 class Grid:
     grid_arr = None
     symbols = None
+    rules = None
     def __init__ (self, configs, rules,symbols):
         size_x = None
         size_y = None
+        self.rules = rules
         # parse intial configs
         try:
             with open(configs) as cf:
@@ -98,7 +103,7 @@ class Grid:
                 # set the dictionary of symbols {$race:$symbol}
                 self.symbols = symbols
                 # initiate empty grid as 2 dimensions array of Cell
-                self.grid_arr = [[Cell(i,j,rules,self) for i in range (size_x)] for j in range(size_y)]
+                self.grid_arr = [[Cell(i,j,self) for i in range (size_x)] for j in range(size_y)]
                 # read all other lines which are intial cells
                 for line in cf:
                     # fetch some cell data from file
@@ -110,7 +115,7 @@ class Grid:
                     except:
                         self.grid_arr[int(pos_y)][int(pos_x)].born(Being(race, None))
         except IOError:
-            print("Can't open rules file : "+ configs +"\n\n")
+            print("Can't open config file : "+ configs +"\n\n")
             sys.exit()
         except Exception:            
             print(traceback.format_exc())
@@ -133,13 +138,11 @@ class Cell:
     pos_y = None
     is_alive = False
     content = None
-    rules = None
     grid = None
     
-    def __init__ (self, pos_x, pos_y, rules, grid):
+    def __init__ (self, pos_x, pos_y, grid):
         self.pos_x = pos_x
         self.pos_y = pos_y
-        self.rules = rules
         self.grid = grid
             
     def die(self):
@@ -154,9 +157,9 @@ class Cell:
     def next_state(self, grid_bu):
         alive_neigh = 0
         # count how many alive neighbour this cell have, position relative to itself
-        # with x in [-1,0,1], x is in fact the delta x
+        # with y in [-1,0,1], x is in fact the delta y
         for y in range(-1,2):
-            # with y in [-1,0,1], y is in fact the delta y
+            # with x in [-1,0,1], y is in fact the delta x
             for x in range(-1,2):
                 neigh_x = self.pos_x + x
                 neigh_y = self.pos_y + y
@@ -168,17 +171,21 @@ class Cell:
                         if not(x is 0 and y is 0):
                             alive_neigh += 1
         if self.is_alive:
-            # check rules for the type of cell we have here
-            rules = self.rules[self.content.race]
-            # check if its over- or under-populated this cell dies
-            # and contains no more being
-            if alive_neigh < int(rules[1]) or alive_neigh > int(rules[2]):
-                self.die()
+            try:
+                # check rules for the type of cell we have here
+                rules = self.grid.rules[self.content.race]
+                # check if its over- or under-populated this cell dies
+                # and contains no more being
+                if alive_neigh < int(rules[1]) or alive_neigh > int(rules[2]):
+                    self.die()                
+            except KeyError:
+                print("Race not specified in rules file : " + self.content.race)
+                sys.exit()
         # if cell is dead
         else:
             # check sequentially in rules dictionary enabling priority
             #(first is the first added, so it's the first line to be read in rules file) 
-            for key, value in self.rules.items() :
+            for key, value in self.grid.rules.items() :
                 # if the number of alive neighbour is exactly the number required
                 # for a cell of that type to born, make it happen then stop checking
                 if alive_neigh is int(value[0]):
